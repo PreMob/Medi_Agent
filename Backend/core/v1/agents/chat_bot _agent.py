@@ -1,8 +1,8 @@
 import google.generativeai as genai
 import os
+from Medi_Agent.Backend.core.v1.agents.symptom_agent import SymptomAnalyzerAgent as agent2
 from dotenv import load_dotenv
 from typing import Dict, List
-
 load_dotenv()
 
 class HealthcareChatAgent:
@@ -66,12 +66,24 @@ class HealthcareChatAgent:
             # First append user message to history
             self.conversation_history.append({"role": "user", "text": user_input})
             
-            # Create new chat session with updated history
+            # Check if the user input contains symptoms
+            if "symptoms" in user_input.lower():
+                symptoms = user_input.replace("symptoms", "").strip()
+                diseases = agent2.analyze_symptoms(symptoms)[:3]  # Get top 3 predictions
+                selected = diseases[0].strip()
+                
+                return (
+                    f"\n Most Likely Condition: {selected}\n"
+                    f" Wikipedia Context:\n{agent2.get_disease_context(selected)}\n"
+                    f" Key Information:\n{agent2.get_disease_info(selected)}\n"
+                )
+
             chat = self.model.start_chat(history=self._format_history())
             
             try:
                 # Send message and get response
-                response = chat.send_message(user_input)
+                response = chat.send_message(user_input) if "symptoms" not in user_input.lower() else ""
+
                 
                 if response and response.text:
                     # Only append assistant response if valid
