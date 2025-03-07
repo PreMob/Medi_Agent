@@ -54,7 +54,7 @@ export function PatientSidebar() {
   }
 
   return (
-    <ScrollArea className="h-full dark:bg-neutral-900">
+    <div className="h-full overflow-auto custom-scrollbar dark:bg-neutral-900">
       <div className="p-4 space-y-6">
         {/* Patient Profile */}
         <motion.div 
@@ -98,9 +98,7 @@ export function PatientSidebar() {
                   {user ? (user.fullName || user.username || "User") : "No User"}
                 </h3>
                 <p className="text-sm text-muted-foreground dark:text-gray-400">
-                  {user?.emailAddresses?.[0]?.emailAddress 
-                    ? user.emailAddresses[0].emailAddress 
-                    : "Patient ID: #12345"}
+                  {"Patient ID: #12345"}
                 </p>
               </>
             )}
@@ -270,6 +268,6 @@ export function PatientSidebar() {
           </div>
         </motion.div>
       </div>
-    </ScrollArea>
+    </div>
   )
 }
