@@ -32,6 +32,8 @@ class HealthcareChatAgent:
         self._configure_model()
         self.conversation_history: List[Dict[str, str]] = []
         self.last_symptoms = ""
+        self.waiting_for_follow_up = None
+        self.suggestion_count = 0
 
     def _configure_model(self):
         genai.configure(api_key=self.api_key)
@@ -135,27 +137,34 @@ class HealthcareChatAgent:
             return ', '.join(cleaned)
         
     def _extract_health_condition(self):
-        """Extract medical conditions from conversation history"""
-        medical_terms = [
-            "diabetes", "hypertension", "ibd", "ibs", "anemia",
-            "migraine", "arthritis", "copd", "hypothyroidism"
-        ]
-        
-        for msg in reversed(self.conversation_history):
-            if msg["role"] == "user":
-                text = msg["text"].lower()
-                if any(term in text for term in medical_terms):
-                    return text
-        return None
+        """Extract medical conditions using symptom analysis"""
+        try:
+            symptoms = self._extract_symptoms_from_history()
+            if not symptoms: return None
+            
+            response = self.model.generate_content(
+                f"Based on these symptoms: {symptoms}\n"
+                "What are 2 most likely medical conditions? Respond ONLY with comma-separated condition names."
+            )
+            return response.text.split(",")[0].strip()  # Return first condition
+        except:
+            return None
     
-    def _get_dietary_advice(self, condition: str):
-        """Get and format dietary recommendations"""
+    def _get_dietary_advice(self, condition: str = None) -> str:
+        """Get dietary advice with inferred condition fallback"""
+        if not condition:
+            condition = self._extract_health_condition() or "your symptoms"
+        
         try:
             dietitian = diet_agent()
             analysis = dietitian.analyze_diet(condition)
             
+            # Always include disclaimer
+            disclaimer = "\n[Note: These are general dietary suggestions. For personalized recommendations, please consult a healthcare provider for proper diagnosis.]\n"
+
             if analysis.get("error"):
                 return "I couldn't generate specific dietary advice. Here are general recommendations:\n" + \
+                    f"{disclaimer}\n" + \
                     f"Breakfast: {analysis['recommendations']['breakfast']}\n" + \
                     f"Lunch: {analysis['recommendations']['lunch']}\n" + \
                     f"Dinner: {analysis['recommendations']['dinner']}"
@@ -164,7 +173,8 @@ class HealthcareChatAgent:
             considerations = "\n".join(analysis['considerations']) if isinstance(analysis['considerations'], list) else analysis['considerations']
             
             return (
-                f"\nDietary Recommendations for {condition.capitalize()}:\n"
+                f"{disclaimer}\n"
+                f"Dietary Recommendations for {condition.capitalize()}:\n"
                 f"Recommended Foods:\n" + '\n'.join(analysis['recommended_foods']) + "\n\n"
                 f"Avoid:\n" + '\n'.join(analysis['avoid_foods']) + "\n\n"
                 f"Sample Meal Plan:\n"
@@ -173,8 +183,9 @@ class HealthcareChatAgent:
                 f"- Dinner: {analysis['meal_plan']['dinner']}\n\n"
                 f"Special Considerations:\n{considerations}"
             )
+        
         except Exception as e:
-            return f"Nutrition error: {str(e)}"
+            return f"Could not generate diet plan: {str(e)}"
 
     def _format_history(self):
         return [
@@ -185,74 +196,104 @@ class HealthcareChatAgent:
             for msg in self.conversation_history
         ]
 
+    def _add_suggestion(self, response: str, user_input: str) -> str:
+        """Append context-aware suggestion to response"""
+        if self.suggestion_count >= 2:  # Max 2 suggestions per conversation
+            return response
+            
+        # Check conversation context
+        has_symptoms = bool(self._extract_symptoms_from_history())
+        has_condition = bool(self._extract_health_condition())
+        
+        # Only suggest if medical context exists and not already handling specific request
+        if (has_symptoms or has_condition) and not any(kw in user_input.lower() for kw in ["diet", "symptom", "analysis"]):
+            self.suggestion_count += 1
+            return f"{response}\n\n[Note: I can provide a detailed symptom analysis or dietary recommendations if you're interested. Just ask!]"
+        
+        return response
+
+    def _get_agent_response(self, query: str) -> str:
+        """Route specific requests to appropriate agents"""
+        query = query.lower()
+        
+        if any(kw in query for kw in ["symptom", "analysis", "diagnos"]):
+            symptoms = self._extract_symptoms_from_history()
+            if symptoms:
+                cleaned = self._clean_symptoms_input(symptoms)
+                analysis = symptom_agent().analyze_symptoms(cleaned)
+                return f"Detailed Analysis:\n{analysis.get('info', 'Analysis unavailable')}"
+            return "Could not find symptoms to analyze"
+
+        if any(kw in query for kw in ["diet", "nutrition", "meal"]):
+            condition = self._extract_health_condition()
+            if not condition:
+                condition = "general symptoms"
+            return self._get_dietary_advice(condition)
+
+        return None
+    
     def process_message(self, user_input: str) -> str:
         try:
+            # Add user input to conversation history
             self.conversation_history.append({"role": "user", "text": user_input})
 
-            if any(kw in user_input.lower() for kw in ["diet", "nutrition", "food", "eat"]):
-                condition = self._extract_health_condition()
-                
-                if not condition:
-                    return "Could you please specify the health condition or symptoms for dietary advice?"
-    
-                return self._get_dietary_advice(condition)
-            
-            if any(kw in user_input.lower() for kw in ["explain", "detail"]):
-                symptoms = self._extract_symptoms_from_history()
-                
-                if not symptoms:
-                    return "Could you please describe your symptoms first?"
+            # Check if the user is making a direct request for agent-specific functionality
+            agent_response = self._get_agent_response(user_input)
+            if agent_response:
+                self.conversation_history.append({"role": "assistant", "text": agent_response})
+                return agent_response
 
-                try:
-                    cleaned_symptoms = self._clean_symptoms_input(symptoms)
-                    
-                    if not cleaned_symptoms:
-                        return "I need more details about your symptoms to analyze."
-                    
-                    analyzer = symptom_agent()
-                    analysis = analyzer.analyze_symptoms(cleaned_symptoms)
-                    
-                    # Add null check for analysis
-                    if not analysis or "error" in analysis or not analysis.get("diseases"):
-                        return "I couldn't analyze those symptoms. Please try to describe them differently."
-                    
-                    selected = analysis["diseases"][0]
-                    return (
-                        f"\nBased on your symptoms: {cleaned_symptoms}\n"
-                        f"Most Likely Condition: {selected}\n"
-                        f"Wikipedia Context:\n{analysis['context']}\n"
-                        f"Key Information:\n{analysis['info']}\n"
-                    )
-                except Exception as e:
-                    return f"Analysis error: {str(e)}"
-
+            # If not a direct agent request, proceed with normal chat flow
             chat = self.model.start_chat(history=self._format_history())
-            
-            try:
-                # Send message and get response
-                response = chat.send_message(user_input) if "symptoms" not in user_input.lower() else ""
+            response = chat.send_message(user_input)
+            base_response = response.text if response.text else "I couldn't generate a response. Please rephrase."
 
-                
-                if response and response.text:
-                    # Only append assistant response if valid
-                    self.conversation_history.append({
-                        "role": "assistant", 
-                        "text": response.text
-                    })
-                    return response.text
-                
-                return "I apologize, but I wasn't able to generate a response. Please try rephrasing your question."
-                
-            except Exception as chat_error:
-                # Remove the user message if response failed
-                self.conversation_history.pop()
-                return f"Chat Error: {str(chat_error)}. Please try again."
-            
+            # Add a non-intrusive suggestion if relevant
+            final_response = self._add_suggestion(base_response, user_input)
+
+            # Add the bot's response to the conversation history
+            self.conversation_history.append({"role": "assistant", "text": final_response})
+            return final_response
+
         except Exception as e:
-            return f"System Error: {str(e)}. Please try again later."
+            return f"Error: {str(e)}"
 
-    def reset_conversation(self):
-        self.conversation_history = []
+        
+    def _add_follow_up_prompt(self, response_text: str) -> tuple:
+        """Append follow-up question if condition/symptoms exist"""
+        condition = self._extract_health_condition()
+        symptoms = self._extract_symptoms_from_history()
+        
+        if condition or symptoms:
+            follow_up = "\n\nWould you like:\n1. Detailed symptom analysis\n2. Dietary recommendations?"
+            return (response_text + follow_up, True)
+        return (response_text, False)
+
+    def _handle_follow_up(self, user_input: str) -> str:
+        """Route follow-up responses to appropriate agents"""
+        self.waiting_for_follow_up = False  # Reset state
+        
+        # Extract condition/symptoms from history
+        condition = self._extract_health_condition()
+        symptoms = self._extract_symptoms_from_history()
+        
+        if not condition and not symptoms:
+            return "Could not identify condition/symptoms for analysis."
+
+        # Route to appropriate agent
+        if "1" in user_input or "detailed" in user_input.lower():
+            if symptoms:
+                cleaned = self._clean_symptoms_input(symptoms)
+                analysis = symptom_agent().analyze_symptoms(cleaned)
+                return f"Detailed Analysis:\n{analysis.get('info', 'Unavailable')}"
+            return "No symptoms found for analysis."
+        
+        elif "2" in user_input or "diet" in user_input.lower():
+            if condition:
+                return self._get_dietary_advice(condition)
+            return "Could not determine condition for dietary advice."
+        
+        return "Please specify: 1 for analysis or 2 for dietary advice."
 
 if __name__ == "__main__":
     bot = HealthcareChatAgent()
