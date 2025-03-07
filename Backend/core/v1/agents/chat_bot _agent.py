@@ -1,6 +1,6 @@
 import google.generativeai as genai
 import os
-from Medi_Agent.Backend.core.v1.agents.symptom_agent import SymptomAnalyzerAgent as agent2
+from symptom_agent import SymptomAnalyzerAgent as agent2
 from dotenv import load_dotenv
 from typing import Dict, List
 load_dotenv()
@@ -29,6 +29,7 @@ class HealthcareChatAgent:
         self.api_key = os.getenv("GEMINI_API_KEY")
         self._configure_model()
         self.conversation_history: List[Dict[str, str]] = []
+        self.last_symptoms = ""
 
     def _configure_model(self):
         genai.configure(api_key=self.api_key)
@@ -51,6 +52,15 @@ class HealthcareChatAgent:
             system_instruction=self.system_instruction,
             safety_settings=self.safety_settings
         )
+    def _extract_symptoms_from_history(self):
+        """Scan conversation history for symptom descriptions"""
+        symptom_keywords = ["symptom", "pain", "feel", "hurts", "ache", "fever", "cough"]
+        for msg in reversed(self.conversation_history):
+            if msg["role"] == "user":
+                text = msg["text"].lower()
+                if any(kw in text for kw in symptom_keywords):
+                    return msg["text"]
+        return None
 
     def _format_history(self):
         return [
@@ -63,20 +73,31 @@ class HealthcareChatAgent:
 
     def process_message(self, user_input: str) -> str:
         try:
-            # First append user message to history
             self.conversation_history.append({"role": "user", "text": user_input})
-            
-            # Check if the user input contains symptoms
-            if "symptoms" in user_input.lower():
-                symptoms = user_input.replace("symptoms", "").strip()
-                diseases = agent2.analyze_symptoms(symptoms)[:3]  # Get top 3 predictions
-                selected = diseases[0].strip()
-                
-                return (
-                    f"\n Most Likely Condition: {selected}\n"
-                    f" Wikipedia Context:\n{agent2.get_disease_context(selected)}\n"
-                    f" Key Information:\n{agent2.get_disease_info(selected)}\n"
-                )
+        
+            if any(kw in user_input.lower() for kw in ["explain", "detail", "more info", "what's wrong"]):
+                symptoms = self._extract_symptoms_from_history()
+
+                if not symptoms:
+                    return "Could you please describe your symptoms first?"
+
+                try:
+                    # Create analyzer instance with EXTRACTED SYMPTOMS
+                    analyzer = agent2()
+                    analysis = analyzer.analyze_symptoms(symptoms)  # Changed from user_input to symptoms
+                    
+                    if analysis["error"] or not analysis["diseases"]:
+                        return "I need more details to analyze. Could you describe your symptoms again?"
+                    
+                    selected = analysis["diseases"][0]
+                    return (
+                        f"\nBased on your previous symptoms:\n"
+                        f"Most Likely Condition: {selected}\n"
+                        f"Wikipedia Context:\n{analysis['context']}\n"
+                        f"Key Information:\n{analysis['info']}\n"
+                    )
+                except Exception as e:
+                    return f"Analysis error: {str(e)}"
 
             chat = self.model.start_chat(history=self._format_history())
             
@@ -117,4 +138,4 @@ if __name__ == "__main__":
             break
             
         response = bot.process_message(user_input)
-        print(f"\nAssistant: {response}\n")
+        print(f"\nAssistant: {response}\n") 
