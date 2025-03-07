@@ -1,5 +1,6 @@
 import google.generativeai as genai
 import os
+import re
 from symptom_agent import SymptomAnalyzerAgent as agent2
 from dotenv import load_dotenv
 from typing import Dict, List
@@ -54,13 +55,83 @@ class HealthcareChatAgent:
         )
     def _extract_symptoms_from_history(self):
         """Scan conversation history for symptom descriptions"""
-        symptom_keywords = ["symptom", "pain", "feel", "hurts", "ache", "fever", "cough"]
-        for msg in reversed(self.conversation_history):
+        symptom_keywords = [
+        # General Symptoms
+        "pain", "discomfort", "weakness", "fatigue", "dizziness", "nausea", "vomiting", 
+        "fever", "chills", "sweating",
+
+        # Respiratory Symptoms
+        "cough", "shortness of breath", "wheezing", "chest pain", "congestion", "runny nose", 
+        "sneezing", "sore throat", "hoarseness", "difficulty breathing",
+
+        # Gastrointestinal Symptoms
+        "stomach pain", "bloating", "gas", "diarrhea", "constipation", "acid reflux", 
+        "heartburn", "loss of appetite", "nausea after eating", "vomiting blood",
+
+        # Head & Neurological Symptoms
+        "headache", "migraine", "dizziness", "lightheadedness", "confusion", "memory loss", 
+        "fainting", "numbness", "tingling sensation", "seizures",
+
+        # Muscle & Joint Symptoms
+        "muscle pain", "stiffness", "cramps", "joint pain", "swelling", "limited movement", 
+        "back pain", "neck pain", "weak grip", "muscle spasms",
+
+        # Skin & Allergy Symptoms
+        "rash", "itching", "redness", "swelling", "dry skin", "hives", "bruising", 
+        "peeling skin", "sensitivity to touch", "skin discoloration",
+
+        # Mental Health Symptoms
+        "anxiety", "depression", "mood swings", "brain fog", "irritability", "hallucinations", 
+        "insomnia", "feeling overwhelmed", "panic attacks", "hopelessness",
+
+        # Eye & Vision Symptoms
+        "blurry vision", "eye pain", "red eyes", "watery eyes", "sensitivity to light", 
+        "dry eyes", "double vision", "floaters", "blind spots", "swollen eyelids",
+
+        # Urinary & Reproductive Symptoms
+        "frequent urination", "burning sensation when urinating", "blood in urine", "pelvic pain", 
+        "irregular periods", "heavy bleeding", "erectile dysfunction", "low libido", 
+        "painful intercourse", "vaginal discharge",
+
+        # Other Symptoms
+        "swollen lymph nodes", "choking sensation", "difficulty swallowing", "unexplained weight loss", 
+        "unexplained weight gain", "hair loss", "chronic fatigue", "night sweats", 
+        "cold hands and feet", "clammy skin"
+        ]
+        
+        # Find all potential symptom messages (last 5 messages)
+        symptom_messages = []
+        for msg in reversed(self.conversation_history[-5:]):
             if msg["role"] == "user":
                 text = msg["text"].lower()
                 if any(kw in text for kw in symptom_keywords):
-                    return msg["text"]
-        return None
+                    symptom_messages.append(msg["text"])
+        
+        return symptom_messages[0] if symptom_messages else None
+
+    def _clean_symptoms_input(self, symptoms: str) -> str:
+        """Extract key symptom phrases from conversation text"""
+        try:
+            response = self.model.generate_content(
+                f"Extract ONLY medical symptoms from this text as comma-separated values: {symptoms}\n"
+                "Focus on anatomical terms and clinical descriptions. Exclude non-symptom phrases.\n"
+                "Example input: 'pain in my ass when pooping'\n"
+                "Example output: anal pain during defecation, rectal bleeding, hematochezia\n"
+                "Format: Strictly use commas to separate symptoms, no numbers or bullets."
+            )
+            cleaned = response.text.strip().lower()
+            # Additional validation to ensure commas
+            if ',' not in cleaned:
+                cleaned = re.sub(r'\band\b|\bwith\b', ',', cleaned)  # Split on 'and'/'with'
+            return cleaned
+        except Exception as e:
+            # Enhanced fallback cleaning: Split on conjunctions and punctuation
+            cleaned = re.sub(r'\b(okay|yes|no|maybe)\b', '', symptoms.lower())
+            cleaned = re.sub(r'[^a-zA-Z, ]', '', cleaned)
+            # Split on commas or conjunctions
+            cleaned = re.split(r',|\band\b|\bwith\b', cleaned)
+            cleaned = [s.strip() for s in cleaned if s.strip()]
+            return ', '.join(cleaned)
 
     def _format_history(self):
         return [
@@ -74,24 +145,29 @@ class HealthcareChatAgent:
     def process_message(self, user_input: str) -> str:
         try:
             self.conversation_history.append({"role": "user", "text": user_input})
-        
-            if any(kw in user_input.lower() for kw in ["explain", "detail", "more info", "what's wrong"]):
+            
+            if any(kw in user_input.lower() for kw in ["explain", "detail"]):
                 symptoms = self._extract_symptoms_from_history()
-
+                
                 if not symptoms:
                     return "Could you please describe your symptoms first?"
 
                 try:
-                    # Create analyzer instance with EXTRACTED SYMPTOMS
-                    analyzer = agent2()
-                    analysis = analyzer.analyze_symptoms(symptoms)  # Changed from user_input to symptoms
+                    cleaned_symptoms = self._clean_symptoms_input(symptoms)
                     
-                    if analysis["error"] or not analysis["diseases"]:
-                        return "I need more details to analyze. Could you describe your symptoms again?"
+                    if not cleaned_symptoms:
+                        return "I need more details about your symptoms to analyze."
+                    
+                    analyzer = agent2()
+                    analysis = analyzer.analyze_symptoms(cleaned_symptoms)
+                    
+                    # Add null check for analysis
+                    if not analysis or "error" in analysis or not analysis.get("diseases"):
+                        return "I couldn't analyze those symptoms. Please try to describe them differently."
                     
                     selected = analysis["diseases"][0]
                     return (
-                        f"\nBased on your previous symptoms:\n"
+                        f"\nBased on your symptoms: {cleaned_symptoms}\n"
                         f"Most Likely Condition: {selected}\n"
                         f"Wikipedia Context:\n{analysis['context']}\n"
                         f"Key Information:\n{analysis['info']}\n"

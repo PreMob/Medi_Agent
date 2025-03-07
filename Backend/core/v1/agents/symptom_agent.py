@@ -30,28 +30,30 @@ class SymptomAnalyzerAgent:
     def analyze_symptoms(self, symptoms: str) -> Dict[str, Union[List[str], str]]:
         """Process symptoms and return disease information"""
         try:
-            # Get potential diseases
             response = self.model.generate_content(
-                f"List 3 most likely medical conditions matching: {symptoms}. "
-                "Format as numbered list. Example:\n1. Common cold\n2. Influenza\n3. Allergy",
-                safety_settings=self.safety_settings
+                f"List 3 most likely MEDICAL CONDITIONS matching: {symptoms}\n"
+                "Format as numbered list using ONLY standard medical terms.\n"
+                "Example:\n1. Hemorrhoids\n2. Anal fissure\n3. Colorectal cancer\n\n"
+                "Rules:\n- Exclude non-disease responses\n- No markdown formatting\n- Only list conditions"
             )
-            diseases = self._clean_disease_list(response.text)[:3]
-
-            # Get detailed information for first disease
-            if diseases:
-                primary_disease = diseases[0]
-                return {
-                    "diseases": diseases,
-                    "context": self._get_disease_context(primary_disease),
-                    "info": self._get_disease_info(primary_disease),
-                    "error": None
-                }
-            return {"error": "No conditions identified"}
-
+            # Add additional validation
+            diseases = [d for d in self._clean_disease_list(response.text) if d.lower() not in ["okay", "normal"]]
+            
+            if not diseases:
+                return {"error": "No valid conditions identified"}
+            
+            # Add this missing section to return proper analysis
+            primary_disease = diseases[0]
+            return {
+                "diseases": diseases,
+                "context": self._get_disease_context(primary_disease),
+                "info": self._get_disease_info(primary_disease),
+                "error": None
+            }
+        
         except Exception as e:
             return {"error": str(e)}
-
+        
     def _get_disease_context(self, disease_name: str) -> str:
         """Fetch disease info from Wikipedia"""
         try:
@@ -70,6 +72,22 @@ class SymptomAnalyzerAgent:
             return response.text
         except Exception as e:
             return f"Information unavailable: {str(e)}"
+        
+    def _clean_disease_list(self, text: str) -> List[str]:
+        """Clean and validate disease list response"""
+        forbidden_terms = ["okay", "normal", "unknown", "healthy", "possible", "conditions", "include"]
+        # Split on various delimiters and numbering formats
+        diseases = re.split(r'\d+[\.\)]|,|\n|-|•|\*', text)
+        cleaned_diseases = []
+        for d in diseases:
+            d = d.strip()
+            # Filter invalid entries
+            if d and not any(term in d.lower() for term in forbidden_terms):
+                # Remove trailing punctuation
+                d = re.sub(r'[^a-zA-Z\s]', '', d)
+                if d:
+                    cleaned_diseases.append(d)
+        return cleaned_diseases[:3]
 
 # Example usage in a multi-agent system
 if __name__ == "__main__":
