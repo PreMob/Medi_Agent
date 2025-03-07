@@ -10,10 +10,8 @@ export const metadata = {
 
 export default function ChatLayout({ children }) {
   return (
-    <div className="flex flex-col h-screen bg-background">
-      <main className="flex-1 relative">
-        {children}
-      </main>
+    <div className="flex h-full">
+      {children}
     </div>
   )
 }

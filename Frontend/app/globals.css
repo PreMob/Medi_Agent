@@ -9,37 +9,77 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Base HTML/Body Handling for Scrolling */
+html, body {
+  height: 100% !important;
+  overflow: hidden !important;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  overflow-y: auto !important;
+}
+
+/* Add global word break and overflow handling for text */
+p, div, span, h1, h2, h3, h4, h5, h6 {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+
+/* Basic animation for dialog overlays */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Safari fix */
+@supports (-webkit-touch-callout: none) {
+  [role="dialog"] > div,
+  [role="alertdialog"] > div {
+    transform: translateZ(0);
+  }
+}
+
+@media (min-width: 640px) {
+  /* Responsive styles */
+}
+
+.dialog-content,
+.alert-dialog-content {
+  /* These styles will be handled by the component directly */
+}
+
+@keyframes dialogSlideIn {
+  /* Animation will be handled by the component directly */
+}
+
+/* Optimize theme variables - only keep what's used */
 :root {
+  /* Core variables only */
   --background: oklch(0.97 0.01 240);
   --foreground: oklch(0.15 0.02 262);
-
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.15 0.02 262);
-
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.15 0.02 262);
-
   --primary: oklch(0.62 0.19 263);
   --primary-foreground: oklch(0.97 0.01 240);
-
   --secondary: oklch(0.95 0.01 240);
   --secondary-foreground: oklch(0.2 0.02 262);
-
   --muted: oklch(0.95 0.01 240);
   --muted-foreground: oklch(0.55 0.03 255);
-
   --accent: oklch(0.95 0.01 240);
   --accent-foreground: oklch(0.2 0.02 262);
-
   --destructive: oklch(0.65 0.24 25);
   --destructive-foreground: oklch(0.97 0.01 240);
-
   --border: oklch(0.9 0.01 240);
   --input: oklch(0.9 0.01 240);
   --ring: oklch(0.62 0.19 263);
-
   --radius: 0.5rem;
   
+  /* Only keep variables that are actually used */
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -56,34 +96,28 @@
 }
 
 .dark {
+  /* Core variables only */
   --background: oklch(0.15 0.02 262);
   --foreground: oklch(0.97 0.01 240);
-
   --card: oklch(0.15 0.02 262);
   --card-foreground: oklch(0.97 0.01 240);
-
   --popover: oklch(0.15 0.02 262);
   --popover-foreground: oklch(0.97 0.01 240);
-
   --primary: oklch(0.65 0.23 267);
   --primary-foreground: oklch(0.2 0.02 262);
-
   --secondary: oklch(0.25 0.05 260);
   --secondary-foreground: oklch(0.97 0.01 240);
-
   --muted: oklch(0.25 0.05 260);
   --muted-foreground: oklch(0.7 0.04 255);
-
   --accent: oklch(0.25 0.05 260);
   --accent-foreground: oklch(0.97 0.01 240);
-
   --destructive: oklch(0.4 0.15 25);
   --destructive-foreground: oklch(0.97 0.01 240);
-
   --border: oklch(0.25 0.05 260);
   --input: oklch(0.25 0.05 260);
   --ring: oklch(0.55 0.2 270);
   
+  /* Only keep variables that are actually used */
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
@@ -141,6 +175,14 @@
 @layer base {
   * {
     @apply border-border;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  
+  html, body {
+    @apply h-full;
+    overflow: hidden; /* Prevent default body/html scrolling */
   }
   
   /* Apply outlines only to interactive elements that need focus states */
@@ -155,13 +197,60 @@
   
   body {
     @apply bg-background text-foreground;
-    /* Remove overflow-hidden to allow scrolling */
+    display: flex;
+    flex-direction: column;
   }
 }
 
 @layer utilities {
   .backface-hidden {
     backface-visibility: hidden;
+  }
+  
+  .content-container {
+    @apply w-full max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+  
+  /* Add a dedicated scrollable container class */
+  .scrollable-content {
+    height: 100%;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+  }
+  
+  .scrollable-content::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .scrollable-content::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .scrollable-content::-webkit-scrollbar-thumb {
+    background-color: rgba(155, 155, 155, 0.5);
+    border-radius: 20px;
+    border: transparent;
+  }
+  
+  /* Custom scrollbar styling */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgba(155, 155, 155, 0.5);
+    border-radius: 20px;
+    border: transparent;
   }
 }
 
@@ -180,4 +269,106 @@
 
 .animate-fadeIn {
   animation: fadeIn 0.3s ease-in-out;
+}
+
+/* Dialog and popup animations */
+@keyframes dialogZoomIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes dialogZoomOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+.AlertDialogContent,
+.DialogContent {
+  max-width: 350px !important;
+  width: 100% !important;
+  margin: 0 auto;
+  border-radius: 8px;
+  animation: dialogZoomIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: center center;
+}
+
+[data-state="closed"].AlertDialogContent,
+[data-state="closed"].DialogContent {
+  animation: dialogZoomOut 0.1s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Override default animations provided by the component library */
+.AlertDialogContent,
+.DialogContent {
+  animation-name: dialogZoomIn !important;
+  animation-duration: 0.15s !important;
+}
+
+[data-state="closed"].AlertDialogContent,
+[data-state="closed"].DialogContent {
+  animation-name: dialogZoomOut !important;
+  animation-duration: 0.1s !important;
+}
+
+/* Ensure consistent sizes for dialog footer buttons */
+.AlertDialogFooter,
+.DialogFooter {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.AlertDialogAction,
+.AlertDialogCancel {
+  min-width: 80px; /* Ensure buttons have consistent minimum width */
+}
+
+@media (max-width: 640px) {
+  .AlertDialogContent,
+  .DialogContent {
+    max-width: calc(100vw - 32px) !important;
+    padding: 16px !important;
+  }
+  
+  .AlertDialogFooter,
+  .DialogFooter {
+    flex-direction: column-reverse;
+  }
+  
+  .AlertDialogAction,
+  .AlertDialogCancel {
+    width: 100%;
+  }
+}
+
+/* Welcome screen card fixes */
+.welcome-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  width: 100%;
+  max-width: 768px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.welcome-card {
+  width: 100%;
+  text-align: left;
+  height: 48px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
 }
