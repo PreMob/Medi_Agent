@@ -1,7 +1,8 @@
 import google.generativeai as genai
 import os
 import re
-from symptom_agent import SymptomAnalyzerAgent as agent2
+from symptom_agent import SymptomAnalyzerAgent as symptom_agent
+from dietitian_agent import DietitianAgent as diet_agent
 from dotenv import load_dotenv
 from typing import Dict, List
 load_dotenv()
@@ -132,6 +133,48 @@ class HealthcareChatAgent:
             cleaned = re.split(r',|\band\b|\bwith\b', cleaned)
             cleaned = [s.strip() for s in cleaned if s.strip()]
             return ', '.join(cleaned)
+        
+    def _extract_health_condition(self):
+        """Extract medical conditions from conversation history"""
+        medical_terms = [
+            "diabetes", "hypertension", "ibd", "ibs", "anemia",
+            "migraine", "arthritis", "copd", "hypothyroidism"
+        ]
+        
+        for msg in reversed(self.conversation_history):
+            if msg["role"] == "user":
+                text = msg["text"].lower()
+                if any(term in text for term in medical_terms):
+                    return text
+        return None
+    
+    def _get_dietary_advice(self, condition: str):
+        """Get and format dietary recommendations"""
+        try:
+            dietitian = diet_agent()
+            analysis = dietitian.analyze_diet(condition)
+            
+            if analysis.get("error"):
+                return "I couldn't generate specific dietary advice. Here are general recommendations:\n" + \
+                    f"Breakfast: {analysis['recommendations']['breakfast']}\n" + \
+                    f"Lunch: {analysis['recommendations']['lunch']}\n" + \
+                    f"Dinner: {analysis['recommendations']['dinner']}"
+
+            # Format special considerations with newlines
+            considerations = "\n".join(analysis['considerations']) if isinstance(analysis['considerations'], list) else analysis['considerations']
+            
+            return (
+                f"\nDietary Recommendations for {condition.capitalize()}:\n"
+                f"Recommended Foods:\n" + '\n'.join(analysis['recommended_foods']) + "\n\n"
+                f"Avoid:\n" + '\n'.join(analysis['avoid_foods']) + "\n\n"
+                f"Sample Meal Plan:\n"
+                f"- Breakfast: {analysis['meal_plan']['breakfast']}\n"
+                f"- Lunch: {analysis['meal_plan']['lunch']}\n"
+                f"- Dinner: {analysis['meal_plan']['dinner']}\n\n"
+                f"Special Considerations:\n{considerations}"
+            )
+        except Exception as e:
+            return f"Nutrition error: {str(e)}"
 
     def _format_history(self):
         return [
@@ -145,6 +188,14 @@ class HealthcareChatAgent:
     def process_message(self, user_input: str) -> str:
         try:
             self.conversation_history.append({"role": "user", "text": user_input})
+
+            if any(kw in user_input.lower() for kw in ["diet", "nutrition", "food", "eat"]):
+                condition = self._extract_health_condition()
+                
+                if not condition:
+                    return "Could you please specify the health condition or symptoms for dietary advice?"
+    
+                return self._get_dietary_advice(condition)
             
             if any(kw in user_input.lower() for kw in ["explain", "detail"]):
                 symptoms = self._extract_symptoms_from_history()
@@ -158,7 +209,7 @@ class HealthcareChatAgent:
                     if not cleaned_symptoms:
                         return "I need more details about your symptoms to analyze."
                     
-                    analyzer = agent2()
+                    analyzer = symptom_agent()
                     analysis = analyzer.analyze_symptoms(cleaned_symptoms)
                     
                     # Add null check for analysis
