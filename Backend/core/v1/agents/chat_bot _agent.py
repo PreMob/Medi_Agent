@@ -5,6 +5,7 @@ from symptom_agent import SymptomAnalyzerAgent as symptom_agent
 from dietitian_agent import DietitianAgent as diet_agent
 from dotenv import load_dotenv
 from typing import Dict, List
+from ocr_agent import process_document
 load_dotenv()
 
 class HealthcareChatAgent:
@@ -26,14 +27,14 @@ class HealthcareChatAgent:
         Emergencies: "This sounds serious. Seek emergency care immediately."
         Uncertainty/Privacy: "I recommend consulting a healthcare provider." Never store/user data.
         """
-        
-        # Then get API key and configure model
+
         self.api_key = os.getenv("GEMINI_API_KEY")
         self._configure_model()
         self.conversation_history: List[Dict[str, str]] = []
         self.last_symptoms = ""
         self.waiting_for_follow_up = None
         self.suggestion_count = 0
+        self.waiting_for_prescription = False
 
     def _configure_model(self):
         genai.configure(api_key=self.api_key)
@@ -197,18 +198,22 @@ class HealthcareChatAgent:
         ]
 
     def _add_suggestion(self, response: str, user_input: str) -> str:
-        """Append context-aware suggestion to response"""
-        if self.suggestion_count >= 2:  # Max 2 suggestions per conversation
+        """Modified suggestion system"""
+        if self.suggestion_count >= 2:
             return response
             
-        # Check conversation context
-        has_symptoms = bool(self._extract_symptoms_from_history())
-        has_condition = bool(self._extract_health_condition())
+        has_medical_context = any([
+            self._extract_symptoms_from_history(),
+            self._extract_health_condition(),
+            any(kw in user_input.lower() for kw in ["report", "prescription"])
+        ])
         
-        # Only suggest if medical context exists and not already handling specific request
-        if (has_symptoms or has_condition) and not any(kw in user_input.lower() for kw in ["diet", "symptom", "analysis"]):
+        if has_medical_context and not any(kw in user_input.lower() for kw in ["diet", "symptom", "analysis", "scan"]):
             self.suggestion_count += 1
-            return f"{response}\n\n[Note: I can provide a detailed symptom analysis or dietary recommendations if you're interested. Just ask!]"
+            return (f"{response}\n\n[Note: I can help with:"
+                    "\n1. Symptom analysis"
+                    "\n2. Dietary recommendations"
+                    "\n3. Prescription scanning]")
         
         return response
 
@@ -229,11 +234,45 @@ class HealthcareChatAgent:
             if not condition:
                 condition = "general symptoms"
             return self._get_dietary_advice(condition)
+        
+        if any(kw in query for kw in ["prescription", "scan", "document"]):
+            self.waiting_for_prescription = True
+            return "Please share the file path of your prescription/document."
 
         return None
     
+    def _process_prescription(self, file_path: str) -> str:
+        """Handle prescription analysis"""
+        try:
+            raw_result = process_document(file_path)
+            
+            # Structure the summary
+            summary_prompt = (
+                f"Analyze this prescription data:\n{raw_result}\n\n"
+                "Provide a patient-friendly summary including:\n"
+                "- Patient and doctor details\n"
+                "- Main diagnosis/condition\n"
+                "- Prescribed medications\n"
+                "- Key instructions\n"
+                "- Additional notes\n"
+                "- Suggested condition this prescription treats"
+            )
+            
+            response = self.model.generate_content(summary_prompt)
+            return f"Prescription Summary:\n{response.text}\n\nRemember to consult your doctor about any medications!"
+        
+        except Exception as e:
+            return f"Error processing prescription: {str(e)}"
+        
     def process_message(self, user_input: str) -> str:
         try:
+
+            if self.waiting_for_prescription:
+                self.waiting_for_prescription = False
+                prescription_summary = self._process_prescription(user_input)
+                self.conversation_history.append({"role": "assistant", "text": prescription_summary})
+                return prescription_summary
+            
             # Add user input to conversation history
             self.conversation_history.append({"role": "user", "text": user_input})
 
@@ -305,5 +344,11 @@ if __name__ == "__main__":
             print("Assistant: Stay healthy!")
             break
             
-        response = bot.process_message(user_input)
+        # Handle file paths differently if waiting for prescription
+        if bot.waiting_for_prescription:
+            response = bot.process_message(user_input)
+        else:
+            # Normal text processing
+            response = bot.process_message(user_input)
+            
         print(f"\nAssistant: {response}\n") 

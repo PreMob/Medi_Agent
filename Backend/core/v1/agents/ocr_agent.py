@@ -87,5 +87,5 @@ def process_document(file_path):
     return generate_summary(text)
 
 # Example usage
-result = process_document(r"Medi_Agent/Backend/core/v1/agents/prescription2.pdf")
-print(result)
+# result = process_document(r"Medi_Agent/Backend/core/v1/agents/prescription2.pdf")
+# print(result)
