@@ -15,7 +15,6 @@ from ..schema.chat.response import (
 
 router = APIRouter()
 
-
 @router.post("/new", response_model=ChatResponse)
 async def create_new_chat(
     request: ChatRequest, user_info: UserInfo = Depends(verify_api_key)
@@ -26,21 +25,18 @@ async def create_new_chat(
         user_info.user_id, request.message
     )
 
-
 @router.post("/{session_id}", response_model=ChatResponse)
 async def send_message(
     session_id: str, request: ChatRequest, user_info: UserInfo = Depends(verify_api_key)
 ):
     """Send a message to an existing chat session"""
     chat_service = ChatService()
-
     try:
         return await chat_service.handle_message(
             user_info.user_id, session_id, request.message, request.sources
         )
     except NotFoundOrAccessException as e:
         raise HTTPException(status_code=403, detail=str(e))
-
 
 @router.get("/{session_id}", response_model=ChatSession)
 async def get_chat_history(
@@ -52,7 +48,6 @@ async def get_chat_history(
         return chat_service.get_chat_history(user_info.user_id, session_id)
     except NotFoundOrAccessException as e:
         raise HTTPException(status_code=403, detail=str(e))
-
 
 @router.delete("/{session_id}")
 async def delete_chat(session_id: str, user_info: UserInfo = Depends(verify_api_key)):
@@ -71,7 +66,6 @@ async def delete_chat(session_id: str, user_info: UserInfo = Depends(verify_api_
         raise HTTPException(
             status_code=403, detail=str(e)
         )
-
 
 @router.get("/", response_model=ChatSessionList)
 async def get_all_chats(user_info: UserInfo = Depends(verify_api_key)):

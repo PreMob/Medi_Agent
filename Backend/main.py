@@ -9,7 +9,7 @@ if env_path.exists():
 # ==== FastAPI App ====
 from fastapi import FastAPI 
 from fastapi.middleware.cors import CORSMiddleware
-from Backend.api.v1.routes import chat_router
+from Backend.api.v1.routes.chat import router as chat_router
 
 app = FastAPI()
 
@@ -23,13 +23,12 @@ app.add_middleware(
 )
 
 # === Add Routes ===
-app.include_router(chat_router, prefix="api/v1/chat", tags=["chat"])
+app.include_router(chat_router, prefix="/api/v1/chat", tags=["chat"])  # Added missing slash
 
 # ==== Root Route ====
 @app.get("/")
 def read_root():
     return {"status": "OK"}
-
 
 if __name__ == "__main__":
     import uvicorn

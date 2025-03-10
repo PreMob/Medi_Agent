@@ -1,0 +1,1 @@
+from Backend.core.v1.db.base import Base
