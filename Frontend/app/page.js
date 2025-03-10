@@ -49,8 +49,11 @@ function FloatingPaths({ position = 0.5 }) {
 }
 
 export default function Home() {
-  const title = "MedAI Assistant";
-  const words = title.split(" ");
+  const mainTitle = "MedAI Assistant";
+  const subtitle = "By MediDevs";
+  
+  const mainTitleWords = mainTitle.split(" ");
+  const subtitleWords = subtitle.split(" ");
 
   return (
     <div className="flex flex-col min-h-full overflow-auto custom-scrollbar">
@@ -67,12 +70,12 @@ export default function Home() {
             transition={{ duration: 2 }}
             className="max-w-4xl mx-auto"
           >
-            <h1 className="text-5xl sm:text-7xl md:text-8xl font-bold mb-8 tracking-tighter">
-              {words.map((word, wordIndex) => (
+            <h1 className="text-5xl sm:text-7xl md:text-8xl font-bold mb-2 tracking-tighter">
+              {mainTitleWords.map((word, wordIndex) => (
                 <span key={wordIndex} className="inline-block mr-4 last:mr-0">
                   {word.split("").map((letter, letterIndex) => (
                     <motion.span
-                      key={`${wordIndex}-${letterIndex}`}
+                      key={`main-${wordIndex}-${letterIndex}`}
                       initial={{ y: 100, opacity: 0 }}
                       animate={{ y: 0, opacity: 1 }}
                       transition={{
@@ -91,6 +94,31 @@ export default function Home() {
                 </span>
               ))}
             </h1>
+            
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-medium mb-8 tracking-tighter">
+              {subtitleWords.map((word, wordIndex) => (
+                <span key={wordIndex} className="inline-block mr-4 last:mr-0">
+                  {word.split("").map((letter, letterIndex) => (
+                    <motion.span
+                      key={`sub-${wordIndex}-${letterIndex}`}
+                      initial={{ y: 100, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      transition={{
+                        delay: 0.5 + wordIndex * 0.1 + letterIndex * 0.03,
+                        type: "spring",
+                        stiffness: 150,
+                        damping: 25,
+                      }}
+                      className="inline-block text-transparent bg-clip-text 
+                                bg-gradient-to-r from-neutral-700 to-neutral-500/80
+                                dark:from-white/80 dark:to-white/60"
+                    >
+                      {letter}
+                    </motion.span>
+                  ))}
+                </span>
+              ))}
+            </h2>
 
             <div 
               className="inline-block group relative bg-gradient-to-b from-black/10 to-white/10
