@@ -1,5 +1,4 @@
-from sqlalchemy import Column, String, DateTime, ForeignKey, JSON
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, String, DateTime, JSON
 from Backend.core.v1.db.base import Base
 from Backend.core.v1.types.utils import generate_uuid, get_utc_now
 

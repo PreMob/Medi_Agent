@@ -1,19 +1,19 @@
 from pathlib import Path
 from dotenv import load_dotenv
 
-# ==== Load Environment Variables ====
+# Load Environment Variables
 env_path = Path(".env")
 if env_path.exists():
     load_dotenv(env_path)
 
-# ==== FastAPI App ====
+# FastAPI App 
 from fastapi import FastAPI 
 from fastapi.middleware.cors import CORSMiddleware
 from Backend.api.v1.routes.chat import router as chat_router
 
 app = FastAPI()
 
-# === Add Middlewares ===
+# Add Middlewares 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,10 +22,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# === Add Routes ===
-app.include_router(chat_router, prefix="/api/v1/chat", tags=["chat"])  # Added missing slash
+# Add Routes 
+app.include_router(chat_router, prefix="/api/v1/chat", tags=["chat"])
 
-# ==== Root Route ====
+# Root Route 
 @app.get("/")
 def read_root():
     return {"status": "OK"}

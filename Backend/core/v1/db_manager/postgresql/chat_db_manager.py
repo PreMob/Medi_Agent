@@ -1,11 +1,11 @@
-from typing import Any, Dict, List, Optional, TypeVar, Union
+from typing import Optional, TypeVar
 
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
 from Backend.core.v1.common.logger import get_logger
-from Backend.core.v1.db.session import get_db_session  # Assuming you have a session factory
-from Backend.core.v1.models.chat import ChatSessionModel  # SQLAlchemy model for chat sessions
+from Backend.core.v1.db.session import get_db_session
+from Backend.core.v1.models.chat import ChatSessionModel
 from Backend.core.v1.types.chat import ChatSession, ChatMessage
 
 logger = get_logger(__name__)

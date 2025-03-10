@@ -1,7 +1,7 @@
-
+# this file contains the ChatService class which is responsible for handling chat interactions and managing chat sessions using PostgreSQL.
 from Backend.api.v1.schema.chat.response import ChatResponse
 from Backend.config.v1.constants import CHAT_DEFAULT_TITLE
-from Backend.core.v1.agents.chat_bot_agent import HealthcareChatAgent  # Updated to use HealthcareChatAgent
+from Backend.core.v1.agents.chat_bot_agent import HealthcareChatAgent
 from Backend.core.v1.common.exceptions import NotFoundOrAccessException
 from Backend.core.v1.common.logger import get_logger
 from Backend.core.v1.db_manager.postgresql.chat_db_manager import ChatDBManager
@@ -20,7 +20,7 @@ class ChatService:
             chat_dao: Data access object for chat persistence.
         """
         self.chat_db_manager = chat_db_manager
-        self.agent = HealthcareChatAgent()  # Directly instantiate HealthcareChatAgent
+        self.agent = HealthcareChatAgent()
 
     async def handle_new_chat_message(self, user_id: str, message: str) -> ChatResponse:
         """Create a new chat session and handle the first message.
@@ -53,8 +53,7 @@ class ChatService:
         if not session:
             raise ValueError("Session not found")
 
-        response_text = self.agent.process_message(user_message)  # Use HealthcareChatAgent's process_message method
-
+        response_text = self.agent.process_message(user_message)
         user_message_obj = ChatMessage(role="user", content=user_message)
         assistant_message_obj = ChatMessage(role="assistant", content=response_text)
         
