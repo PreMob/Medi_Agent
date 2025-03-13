@@ -300,11 +300,6 @@ if __name__ == "__main__":
             print("Assistant: Stay healthy!")
             break
             
-        # Handle file paths differently if waiting for prescription
-        if bot.waiting_for_prescription:
-            response = bot.process_message(user_input)
-        else:
-            # Normal text processing
-            response = bot.process_message(user_input)
+        response = bot.process_message(user_input)
             
         print(f"\nAssistant: {response}\n") 
