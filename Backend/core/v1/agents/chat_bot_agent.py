@@ -5,7 +5,6 @@ from symptom_agent import SymptomAnalyzerAgent as symptom_agent
 from dietitian_agent import DietitianAgent as diet_agent
 from dotenv import load_dotenv
 from typing import Dict, List
-from ocr_agent import process_document
 load_dotenv()
 
 class HealthcareChatAgent:
@@ -13,7 +12,6 @@ class HealthcareChatAgent:
         # Define system_instruction first
         self.system_instruction = """
         You are a medical AI assistant designed to provide users with basic medical insights based on symptoms, prescriptions, and reports. Your responses should be informative, empathetic, and easy to understand. Follow these rules:
-        Conversation Flow
         Redirect non-health questions: "I’m here to help with health queries! What brings you here?"
 
         Information Gathering
@@ -32,9 +30,7 @@ class HealthcareChatAgent:
         self._configure_model()
         self.conversation_history: List[Dict[str, str]] = []
         self.last_symptoms = ""
-        self.waiting_for_follow_up = None
         self.suggestion_count = 0
-        self.waiting_for_prescription = False
 
     def _configure_model(self):
         genai.configure(api_key=self.api_key)
@@ -235,20 +231,14 @@ class HealthcareChatAgent:
                 condition = "general symptoms"
             return self._get_dietary_advice(condition)
         
-        if any(kw in query for kw in ["prescription", "scan", "document"]):
-            self.waiting_for_prescription = True
-            return "Please share the file path of your prescription/document."
-
         return None
     
-    def _process_prescription(self, file_path: str) -> str:
-        """Handle prescription analysis"""
+    def _process_prescription(self, prescription_data: str) -> str:
+        """Handle prescription analysis using raw text data"""
         try:
-            raw_result = process_document(file_path)
-            
             # Structure the summary
             summary_prompt = (
-                f"Analyze this prescription data:\n{raw_result}\n\n"
+                f"Analyze this prescription data:\n{prescription_data}\n\n"
                 "Provide a patient-friendly summary including:\n"
                 "- Patient and doctor details\n"
                 "- Main diagnosis/condition\n"
@@ -266,74 +256,40 @@ class HealthcareChatAgent:
         
     def process_message(self, user_input: str) -> str:
         try:
+            # Handle prescription data or upload request
+            if "prescription" in user_input.lower():
+                if user_input.startswith("PRESCRIPTION_DATA:"):
+                    prescription_data = user_input[len("PRESCRIPTION_DATA:"):].strip()
+                    summary = self._process_prescription(prescription_data)
+                    self.conversation_history.append({"role": "assistant", "text": summary})
+                    return summary
+                else:
+                    response = "Please upload your prescription file using the upload button."
+                    self.conversation_history.append({"role": "assistant", "text": response})
+                    return response
 
-            if self.waiting_for_prescription:
-                self.waiting_for_prescription = False
-                prescription_summary = self._process_prescription(user_input)
-                self.conversation_history.append({"role": "assistant", "text": prescription_summary})
-                return prescription_summary
-            
             # Add user input to conversation history
             self.conversation_history.append({"role": "user", "text": user_input})
 
-            # Check if the user is making a direct request for agent-specific functionality
+            # Check for agent-specific requests (symptoms, diet, etc.)
             agent_response = self._get_agent_response(user_input)
             if agent_response:
                 self.conversation_history.append({"role": "assistant", "text": agent_response})
                 return agent_response
 
-            # If not a direct agent request, proceed with normal chat flow
+            # Normal chat flow
             chat = self.model.start_chat(history=self._format_history())
             response = chat.send_message(user_input)
             base_response = response.text if response.text else "I couldn't generate a response. Please rephrase."
 
-            # Add a non-intrusive suggestion if relevant
+            # Add suggestions if applicable
             final_response = self._add_suggestion(base_response, user_input)
-
-            # Add the bot's response to the conversation history
             self.conversation_history.append({"role": "assistant", "text": final_response})
             return final_response
 
         except Exception as e:
             return f"Error: {str(e)}"
-
         
-    def _add_follow_up_prompt(self, response_text: str) -> tuple:
-        """Append follow-up question if condition/symptoms exist"""
-        condition = self._extract_health_condition()
-        symptoms = self._extract_symptoms_from_history()
-        
-        if condition or symptoms:
-            follow_up = "\n\nWould you like:\n1. Detailed symptom analysis\n2. Dietary recommendations?"
-            return (response_text + follow_up, True)
-        return (response_text, False)
-
-    def _handle_follow_up(self, user_input: str) -> str:
-        """Route follow-up responses to appropriate agents"""
-        self.waiting_for_follow_up = False  # Reset state
-        
-        # Extract condition/symptoms from history
-        condition = self._extract_health_condition()
-        symptoms = self._extract_symptoms_from_history()
-        
-        if not condition and not symptoms:
-            return "Could not identify condition/symptoms for analysis."
-
-        # Route to appropriate agent
-        if "1" in user_input or "detailed" in user_input.lower():
-            if symptoms:
-                cleaned = self._clean_symptoms_input(symptoms)
-                analysis = symptom_agent().analyze_symptoms(cleaned)
-                return f"Detailed Analysis:\n{analysis.get('info', 'Unavailable')}"
-            return "No symptoms found for analysis."
-        
-        elif "2" in user_input or "diet" in user_input.lower():
-            if condition:
-                return self._get_dietary_advice(condition)
-            return "Could not determine condition for dietary advice."
-        
-        return "Please specify: 1 for analysis or 2 for dietary advice."
-
 if __name__ == "__main__":
     bot = HealthcareChatAgent()
     print("Healthcare Assistant: Hello! How can I assist you today? (Type 'exit' to quit)")
