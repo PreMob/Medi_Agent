@@ -25,13 +25,14 @@ export default function Page({ params }) {
 }
 
 function MedicalChat({ slug }) {
-  const { messages, input, handleInputChange, handleSubmit, isLoading, stop, reload, setMessages } = useCustomChat({
+  const { messages, input, handleInputChange, handleSubmit, isLoading, stop, reload, setMessages, error } = useCustomChat({
     onFinish: () => {
       setMessages(currentMessages => {
         saveChat(currentMessages);
         return currentMessages;
       });
-    }
+    },
+    sessionId: slug
   });
   
   // Add this to get Clerk user data
@@ -440,6 +441,13 @@ function MedicalChat({ slug }) {
                 </div>
               </div>
             ))
+          )}
+          {error && (
+            <div className="flex justify-center">
+              <div className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-4 py-2 rounded-lg text-sm">
+                {error}
+              </div>
+            </div>
           )}
           <div ref={messagesEndRef} />
         </div>

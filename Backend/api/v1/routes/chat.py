@@ -73,28 +73,60 @@ async def get_all_chats(user_info: UserInfo = Depends(verify_api_key)):
         sessions=chat_service.get_chat_history_by_user_id(user_info.user_id)
     )
 
-@router.post("/upload", response_model=JSONResponse)
-async def upload_file(
-    file: UploadFile = File(...), user_info: UserInfo = Depends(verify_api_key)
-):
-    """Upload a PDF or image file"""
-    if file.content_type not in ["application/pdf", "image/jpeg", "image/png"]:
-        raise HTTPException(status_code=400, detail="Invalid file type")
+# @router.post("/upload", response_model=JSONResponse)
+# async def upload_file(
+#     file: UploadFile = File(...), user_info: UserInfo = Depends(verify_api_key)
+# ):
+#     """Upload a PDF or image file"""
+#     if file.content_type not in ["application/pdf", "image/jpeg", "image/png"]:
+#         raise HTTPException(status_code=400, detail="Invalid file type")
     
-    return JSONResponse(content={"filename": file.filename, "status": "file received"})
+#     return JSONResponse(content={"filename": file.filename, "status": "file received"})
 
-@router.post("/process-file", response_model=JSONResponse)
-async def process_file(file: UploadFile = File(...), user_info: UserInfo = Depends(verify_api_key)):
-    """Upload and process a PDF or image file"""
+# @router.post("/process-file", response_model=JSONResponse)
+# async def process_file(file: UploadFile = File(...), user_info: UserInfo = Depends(verify_api_key)):
+#     """Upload and process a PDF or image file"""
+#     if file.content_type not in ["application/pdf", "image/jpeg", "image/png"]:
+#         raise HTTPException(status_code=400, detail="Invalid file type")
+    
+#     file_location = f"/tmp/{file.filename}"
+#     with open(file_location, "wb") as f:
+#         f.write(file.file.read())
+    
+#     result = process_document(file_location)
+    
+#     os.remove(file_location)
+    
+#     return JSONResponse(content={"filename": file.filename, "result": result})
+
+@router.post("/process-file/{session_id}", response_model=dict)
+async def process_file(
+    session_id: str,
+    file: UploadFile = File(...),
+    user_info: UserInfo = Depends(verify_api_key)
+):
+    # Validate file type
     if file.content_type not in ["application/pdf", "image/jpeg", "image/png"]:
         raise HTTPException(status_code=400, detail="Invalid file type")
     
+    # Save file temporarily
     file_location = f"/tmp/{file.filename}"
     with open(file_location, "wb") as f:
         f.write(file.file.read())
     
+    # Extract text and generate summary
     result = process_document(file_location)
-    
     os.remove(file_location)
     
-    return JSONResponse(content={"filename": file.filename, "result": result})
+    # Inject prescription data into chat session
+    chat_service = ChatService()
+    try:
+        await chat_service.handle_message(
+            user_info.user_id, 
+            session_id, 
+            f"PRESCRIPTION_DATA: {result}", 
+            None
+        )
+        return JSONResponse(content={"status": "Prescription processed successfully"})
+    except NotFoundOrAccessException as e:
+        raise HTTPException(status_code=403, detail=str(e))

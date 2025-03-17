@@ -1,5 +1,5 @@
 import google.generativeai as genai
-from PIL import Image
+# from PIL import Image
 import PyPDF2
 from pdf2image import convert_from_path
 import os

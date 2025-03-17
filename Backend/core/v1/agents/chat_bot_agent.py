@@ -1,8 +1,8 @@
 import google.generativeai as genai
 import os
 import re
-from symptom_agent import SymptomAnalyzerAgent as symptom_agent
-from dietitian_agent import DietitianAgent as diet_agent
+from .symptom_agent import SymptomAnalyzerAgent as symptom_agent
+from .dietitian_agent import DietitianAgent as diet_agent
 from dotenv import load_dotenv
 from typing import Dict, List
 load_dotenv()

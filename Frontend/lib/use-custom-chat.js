@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
+import { apiClient } from './api-client';
 
-export function useCustomChat({ initialMessages = [], onFinish } = {}) {
+export function useCustomChat({ initialMessages = [], onFinish, sessionId } = {}) {
   const [messages, setMessages] = useState(initialMessages);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
   
   // Load messages from localStorage on mount
   useEffect(() => {
@@ -22,40 +24,61 @@ export function useCustomChat({ initialMessages = [], onFinish } = {}) {
 
   const handleInputChange = (e) => {
     setInput(e.target.value);
+    setError(null);
   };
 
-  const handleSubmit = useCallback((e) => {
+  const handleSubmit = useCallback(async (e) => {
     e?.preventDefault();
     if (!input.trim()) return;
 
-    // Add user message
-    const userMessage = { id: Date.now(), role: 'user', content: input };
-    const newMessages = [...messages, userMessage];
-    setMessages(newMessages);
-    setInput('');
-    
-    // Save to localStorage
-    localStorage.setItem('medical-chat', JSON.stringify(newMessages));
-    
-    // Simulate AI response with a delay
-    setIsLoading(true);
-    setTimeout(() => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      // Add user message
+      const userMessage = { id: Date.now(), role: 'user', content: input };
+      const newMessages = [...messages, userMessage];
+      setMessages(newMessages);
+      setInput('');
+      
+      // Save to localStorage
+      localStorage.setItem('medical-chat', JSON.stringify(newMessages));
+      
+      // Send message to backend
+      let response;
+      if (sessionId) {
+        response = await apiClient.sendMessage(sessionId, input);
+      } else {
+        response = await apiClient.createNewChat(input);
+      }
+
+      // Add AI response
       const aiMessage = { 
         id: Date.now() + 1, 
         role: 'assistant', 
-        content: `This is a simulated response to: "${input}". In a real implementation, this would be replaced with an actual API call to your AI backend.` 
+        content: response.message,
+        sources: response.sources || []
       };
+      
       const updatedMessages = [...newMessages, aiMessage];
       setMessages(updatedMessages);
-      setIsLoading(false);
       localStorage.setItem('medical-chat', JSON.stringify(updatedMessages));
+      
       if (onFinish) onFinish(aiMessage);
-    }, 1000);
-  }, [input, messages, onFinish]);
+    } catch (error) {
+      console.error('Error in chat:', error);
+      setError(error.message || 'An error occurred while processing your message');
+      
+      // Remove the user message if the API call failed
+      setMessages(messages);
+      setInput(input);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [input, messages, onFinish, sessionId]);
 
   const stop = useCallback(() => {
     setIsLoading(false);
-    // In a real implementation, you would abort the API call here
   }, []);
 
   const reload = useCallback(() => {
@@ -78,6 +101,7 @@ export function useCustomChat({ initialMessages = [], onFinish } = {}) {
     isLoading,
     stop,
     reload,
-    setMessages
+    setMessages,
+    error
   };
 }
