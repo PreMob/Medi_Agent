@@ -10,6 +10,11 @@ from Backend.services.v1.chat.service import ChatService
 from Backend.api.v1.schema.chat.request import ChatRequest
 from Backend.api.v1.schema.chat.response import ChatResponse, ChatSession, ChatSessionList
 from Backend.core.v1.agents.ocr_agent import process_document
+from Backend.core.v1.utils.env_config import load_environment, configure_google_api
+
+# Load environment variables and configure Google API on startup
+load_environment()
+configure_google_api()
 
 router = APIRouter()
 
@@ -30,8 +35,9 @@ async def send_message(
     """Send a message to an existing chat session"""
     chat_service = ChatService()
     try:
+        # Remove the request.sources parameter which doesn't exist in the method signature
         return await chat_service.handle_message(
-            user_info.user_id, session_id, request.message, request.sources
+            user_info.user_id, session_id, request.message
         )
     except NotFoundOrAccessException as e:
         raise HTTPException(status_code=403, detail=str(e))
@@ -124,8 +130,7 @@ async def process_file(
         await chat_service.handle_message(
             user_info.user_id, 
             session_id, 
-            f"PRESCRIPTION_DATA: {result}", 
-            None
+            f"PRESCRIPTION_DATA: {result}"
         )
         return JSONResponse(content={"status": "Prescription processed successfully"})
     except NotFoundOrAccessException as e:
