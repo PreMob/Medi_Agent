@@ -1,10 +1,10 @@
+import os
 from pathlib import Path
 from dotenv import load_dotenv
+from Backend.core.v1.utils.env_config import load_environment
 
-# Load Environment Variables
-env_path = Path(".env")
-if env_path.exists():
-    load_dotenv(env_path)
+# Load Environment Variables from backend root
+load_environment()
 
 # FastAPI App 
 from fastapi import FastAPI 

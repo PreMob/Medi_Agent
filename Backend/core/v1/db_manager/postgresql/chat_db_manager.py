@@ -17,18 +17,22 @@ class ChatDBManager:
     """
     def __init__(self, db_session: Session = None):
         """Initialize the DAO with a database session."""
-        self.db_session = db_session or get_db_session()
+        if db_session:
+            self.db_session = db_session
+        else:
+            # Get the actual session from the generator
+            self.db_session = next(get_db_session())
     
     def create(self, chat_session: ChatSession) -> ChatSession:
         """Create a new chat session."""
         try:
-            db_session = ChatSessionModel(
+            db_chat_session = ChatSessionModel(
                 id=chat_session.id,
                 user_id=chat_session.user_id,
                 title=chat_session.title,
                 messages=[msg.model_dump() for msg in chat_session.messages],
             )
-            self.db_session.add(db_session)
+            self.db_session.add(db_chat_session)
             self.db_session.commit()
             return chat_session
         except SQLAlchemyError as e:

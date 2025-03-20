@@ -18,14 +18,12 @@ def mock_decode_api_key(api_key: str) -> UserInfo:
         return UserInfo(
             user_id="admin123",
             role="admin",
-            organization="cellstrat",
             name="Admin User",
         )
     elif api_key == "test-user-key":
         return UserInfo(
             user_id="user123",
             role="user",
-            organization="cellstrat",
             name="Regular User",
         )
     else:
@@ -33,7 +31,6 @@ def mock_decode_api_key(api_key: str) -> UserInfo:
         return UserInfo(
             user_id=api_key,
             role="user",
-            organization="personal",
             name="Regular User",
         )
     # raise HTTPException(status_code=401, detail="Invalid API key")

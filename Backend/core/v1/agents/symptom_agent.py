@@ -4,24 +4,39 @@ import os
 import re
 from dotenv import load_dotenv
 from typing import Dict, List, Union
+from Backend.core.v1.common.logger import get_logger
 
 load_dotenv()
+logger = get_logger(__name__)
 
 class SymptomAnalyzerAgent:
     def __init__(self):
-        self.api_key = os.getenv("GEMINI_API_KEY")
-        self._configure_model()
+        try:
+            self.api_key = os.getenv("GEMINI_API_KEY")
+            if not self.api_key:
+                logger.error("Missing GEMINI_API_KEY in environment variables")
+                raise ValueError("GEMINI_API_KEY not found in environment variables")
+            self._configure_model()
+            logger.info("SymptomAnalyzerAgent initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize SymptomAnalyzerAgent: {str(e)}")
+            raise
         
     def _configure_model(self):
         """Configure the Gemini model with safety settings"""
-        genai.configure(api_key=self.api_key)
-        self.safety_settings = {
-            "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_ONLY_HIGH",
-            "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
-            "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
-            "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE"
-        }
-        self.model = genai.GenerativeModel('gemini-2.0-flash')
+        try:
+            genai.configure(api_key=self.api_key)
+            self.safety_settings = {
+                "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_ONLY_HIGH",
+                "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
+                "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
+                "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE"
+            }
+            self.model = genai.GenerativeModel('gemini-2.0-flash')
+            logger.debug("Gemini model configured successfully")
+        except Exception as e:
+            logger.error(f"Failed to configure Gemini model: {str(e)}")
+            raise
 
     def _clean_disease_list(self, text: str) -> List[str]:
         """Clean and format the disease list response"""
@@ -52,13 +67,15 @@ class SymptomAnalyzerAgent:
             }
         
         except Exception as e:
+            logger.error(f"Failed to analyze symptoms: {str(e)}")
             return {"error": str(e)}
         
     def _get_disease_context(self, disease_name: str) -> str:
         """Fetch disease info from Wikipedia"""
         try:
             return wikipedia.summary(disease_name, sentences=3)
-        except:
+        except Exception as e:
+            logger.error(f"Failed to fetch disease context from Wikipedia: {str(e)}")
             return "No additional context available"
 
     def _get_disease_info(self, disease_name: str) -> str:
@@ -71,6 +88,7 @@ class SymptomAnalyzerAgent:
             )
             return response.text
         except Exception as e:
+            logger.error(f"Failed to fetch disease information: {str(e)}")
             return f"Information unavailable: {str(e)}"
         
     def _clean_disease_list(self, text: str) -> List[str]:

@@ -5,7 +5,11 @@ from .symptom_agent import SymptomAnalyzerAgent as symptom_agent
 from .dietitian_agent import DietitianAgent as diet_agent
 from dotenv import load_dotenv
 from typing import Dict, List
+from Backend.core.v1.common.logger import get_logger
+from Backend.core.v1.common.exceptions import AgentProcessingException
+
 load_dotenv()
+logger = get_logger(__name__)
 
 class HealthcareChatAgent:
     def __init__(self):
@@ -255,40 +259,59 @@ class HealthcareChatAgent:
             return f"Error processing prescription: {str(e)}"
         
     def process_message(self, user_input: str) -> str:
+        """Process user message and return appropriate response"""
         try:
+            logger.debug(f"Processing message: {user_input[:50]}..." if len(user_input) > 50 else f"Processing message: {user_input}")
+            
             # Handle prescription data or upload request
             if "prescription" in user_input.lower():
-                if user_input.startswith("PRESCRIPTION_DATA:"):
-                    prescription_data = user_input[len("PRESCRIPTION_DATA:"):].strip()
-                    summary = self._process_prescription(prescription_data)
-                    self.conversation_history.append({"role": "assistant", "text": summary})
-                    return summary
-                else:
-                    response = "Please upload your prescription file using the upload button."
-                    self.conversation_history.append({"role": "assistant", "text": response})
-                    return response
+                try:
+                    if user_input.startswith("PRESCRIPTION_DATA:"):
+                        prescription_data = user_input[len("PRESCRIPTION_DATA:"):].strip()
+                        summary = self._process_prescription(prescription_data)
+                        self.conversation_history.append({"role": "assistant", "text": summary})
+                        return summary
+                    else:
+                        response = "Please upload your prescription file using the upload button."
+                        self.conversation_history.append({"role": "assistant", "text": response})
+                        return response
+                except Exception as e:
+                    error_msg = f"Error processing prescription request: {str(e)}"
+                    logger.error(error_msg)
+                    return f"I couldn't process your prescription information. {error_msg}"
 
             # Add user input to conversation history
             self.conversation_history.append({"role": "user", "text": user_input})
 
             # Check for agent-specific requests (symptoms, diet, etc.)
-            agent_response = self._get_agent_response(user_input)
-            if agent_response:
-                self.conversation_history.append({"role": "assistant", "text": agent_response})
-                return agent_response
-
-            # Normal chat flow
-            chat = self.model.start_chat(history=self._format_history())
-            response = chat.send_message(user_input)
-            base_response = response.text if response.text else "I couldn't generate a response. Please rephrase."
+            try:
+                agent_response = self._get_agent_response(user_input)
+                if agent_response:
+                    self.conversation_history.append({"role": "assistant", "text": agent_response})
+                    return agent_response
+            except Exception as e:
+                logger.error(f"Error in specialized agent response: {str(e)}")
+                # Continue to general model as fallback
+            
+            # Normal chat flow with error handling
+            try:
+                chat = self.model.start_chat(history=self._format_history())
+                response = chat.send_message(user_input)
+                base_response = response.text if response.text else "I couldn't generate a response. Please rephrase."
+            except Exception as e:
+                logger.error(f"Error in LLM response generation: {str(e)}")
+                base_response = "I'm having trouble generating a response right now. Could you please rephrase or try again later?"
 
             # Add suggestions if applicable
             final_response = self._add_suggestion(base_response, user_input)
             self.conversation_history.append({"role": "assistant", "text": final_response})
+            logger.debug("Successfully processed message and generated response")
             return final_response
 
         except Exception as e:
-            return f"Error: {str(e)}"
+            error_msg = f"Unexpected error in message processing: {str(e)}"
+            logger.error(error_msg)
+            return f"I apologize, but I encountered an error: {error_msg}"
         
 if __name__ == "__main__":
     bot = HealthcareChatAgent()
@@ -302,4 +325,4 @@ if __name__ == "__main__":
             
         response = bot.process_message(user_input)
             
-        print(f"\nAssistant: {response}\n") 
+        print(f"\nAssistant: {response}\n")
