@@ -16,7 +16,9 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { Paperclip, Send, Stethoscope, User, Loader2, FileText, ImageIcon, Download, Tag, Trash2, Pin, X } from "lucide-react"
+import { Paperclip, Send, Stethoscope, User, Loader2, FileText, ImageIcon, Download, Tag, Trash2, Pin, X, Clock, ThumbsUp, ThumbsDown, Share, Maximize, Copy } from "lucide-react"
+import ReactMarkdown from 'react-markdown'
+import rehypeSanitize from 'rehype-sanitize'
 
 export default function Page({ params }) {
   const { slug } = params;
@@ -25,7 +27,7 @@ export default function Page({ params }) {
 }
 
 function MedicalChat({ slug }) {
-  const { messages, input, handleInputChange, handleSubmit, isLoading, stop, reload, setMessages, error } = useCustomChat({
+  const { messages, groupedMessages, input, handleInputChange, handleSubmit, isLoading, isTyping, stop, reload, setMessages, error } = useCustomChat({
     onFinish: () => {
       setMessages(currentMessages => {
         saveChat(currentMessages);
@@ -152,6 +154,37 @@ function MedicalChat({ slug }) {
     }
   };
 
+  // Add this function for formatting timestamps
+  const formatMessageTime = (timestamp) => {
+    if (!timestamp) return '';
+    
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Add this function for formatted date
+  const formatMessageDate = (timestamp) => {
+    if (!timestamp) return '';
+    
+    const date = new Date(timestamp);
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    // Check if today
+    if (date.toDateString() === today.toDateString()) {
+      return 'Today';
+    }
+    
+    // Check if yesterday
+    if (date.toDateString() === yesterday.toDateString()) {
+      return 'Yesterday';
+    }
+    
+    // Otherwise return formatted date
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
   return (
     <div className="flex h-full w-full">
       <div className="hidden md:block md:w-72 border-r bg-white dark:bg-neutral-900 dark:border-neutral-800">
@@ -176,9 +209,13 @@ function MedicalChat({ slug }) {
                     <AvatarImage 
                       src={user.imageUrl} 
                       alt={user.fullName || user.username || "User"} 
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.parentElement.querySelector('[data-fallback]').style.display = 'flex';
+                      }}
                     />
                   ) : (
-                    <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white">
+                    <AvatarFallback data-fallback className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white">
                       {user ? (user.fullName?.charAt(0) || user.username?.charAt(0) || "U")
                            : (slug?.charAt(0)?.toUpperCase() || 'P')}
                     </AvatarFallback>
@@ -397,53 +434,231 @@ function MedicalChat({ slug }) {
               </div>
             </div>
           ) : (
-            /* Message bubbles with dark mode */
-            messages.map((message) => (
-              <div 
-                key={message.id}
-                className={cn(
-                  "mb-4 flex w-full",
-                  message.role === "user" ? "justify-end" : "justify-start"
-                )}
-              >
-                <div className={cn(
-                  "flex items-end gap-2 max-w-[85%]",
-                  message.role === "user" ? "flex-row-reverse" : "flex-row"
-                )}>
-                  {message.role !== "user" && (
-                    <Avatar className="h-8 w-8 shrink-0">
-                      <AvatarFallback className="bg-blue-600 text-white">AI</AvatarFallback>
-                    </Avatar>
-                  )}
-                  
-                  <div className="flex-1 min-w-0 overflow-hidden">
+            /* Enhanced Message Display with Time Groups */
+            <>
+              {messages.map((message, index) => {
+                // Show date separator when date changes
+                const showDateSeparator = index === 0 || 
+                  (message.timestamp && messages[index-1]?.timestamp && 
+                   new Date(message.timestamp).toDateString() !== new Date(messages[index-1].timestamp).toDateString());
+                
+                return (
+                  <div key={message.id}>
+                    {showDateSeparator && message.timestamp && (
+                      <div className="flex justify-center my-4">
+                        <div className="px-3 py-1 bg-gray-100 dark:bg-neutral-800 rounded-full text-xs text-gray-500 dark:text-gray-400 flex items-center">
+                          <Clock className="h-3 w-3 mr-1" />
+                          {formatMessageDate(message.timestamp)}
+                        </div>
+                      </div>
+                    )}
+                    
                     <div className={cn(
-                      "text-sm font-medium mb-1 dark:text-gray-300",
-                      message.role === "user" ? "text-right" : "text-left"
+                      "mb-4 flex w-full group",
+                      message.role === "user" ? "justify-end" : "justify-start"
                     )}>
-                      {message.role === "user" ? "You" : "MedAssist AI"}
-                    </div>
-                    <div className={cn(
-                      "rounded-lg p-3 break-words",
-                      message.role === "user" 
-                        ? "bg-blue-600 text-white" 
-                        : "bg-gray-100 dark:bg-neutral-800 dark:text-gray-100"
-                    )}>
-                      {message.content}
+                      <div className={cn(
+                        "flex items-end gap-2 max-w-[85%] md:max-w-[75%] relative",
+                        message.role === "user" ? "flex-row-reverse" : "flex-row"
+                      )}>
+                        {message.role !== "user" && (
+                          <Avatar className="h-8 w-8 shrink-0">
+                            <AvatarImage 
+                              src="/bot-avatar.png" 
+                              alt="AI"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                                e.target.parentElement.querySelector('[data-fallback]').style.display = 'flex';
+                              }} 
+                            />
+                            <AvatarFallback data-fallback className="bg-blue-600 text-white">AI</AvatarFallback>
+                          </Avatar>
+                        )}
+                        
+                        <div className="flex-1 min-w-0 overflow-hidden">
+                          <div className={cn(
+                            "flex items-center gap-1.5 mb-1",
+                            message.role === "user" ? "justify-end" : "justify-start"
+                          )}>
+                            <span className="text-sm font-medium dark:text-gray-300">
+                              {message.role === "user" ? "You" : "MedAssist AI"}
+                            </span>
+                            {message.timestamp && (
+                              <span className="text-xs text-gray-500 dark:text-gray-400">
+                                {formatMessageTime(message.timestamp)}
+                              </span>
+                            )}
+                          </div>
+                          
+                          <div className={cn(
+                            "rounded-lg p-3 break-words relative group",
+                            message.role === "user" 
+                              ? "bg-blue-600 text-white rounded-tr-none" 
+                              : "bg-gray-100 dark:bg-neutral-800 dark:text-gray-100 rounded-tl-none"
+                          )}>
+                            {message.role === "user" ? (
+                              message.content
+                            ) : (
+                              <ReactMarkdown 
+                                rehypePlugins={[rehypeSanitize]}
+                                components={{
+                                  root: ({node, ...props}) => (
+                                    <div className="prose prose-sm dark:prose-invert max-w-none" {...props} />
+                                  ),
+                                  ul: ({node, ...props}) => (
+                                    <ul className="list-disc pl-4 my-2 space-y-1" {...props} />
+                                  ),
+                                  ol: ({node, ...props}) => (
+                                    <ol className="list-decimal pl-4 my-2 space-y-1" {...props} />
+                                  ),
+                                  li: ({node, ...props}) => (
+                                    <li className="my-0.5" {...props} />
+                                  ),
+                                  p: ({node, ...props}) => (
+                                    <p className="mb-2 last:mb-0" {...props} />
+                                  ),
+                                  a: ({node, ...props}) => (
+                                    <a className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer" {...props} />
+                                  ),
+                                  strong: ({node, ...props}) => (
+                                    <strong className="font-semibold" {...props} />
+                                  ),
+                                }}
+                              >
+                                {message.content}
+                              </ReactMarkdown>
+                            )}
+                            
+                            {/* Message action buttons */}
+                            <div className={cn(
+                              "absolute -bottom-7 opacity-0 group-hover:opacity-100 transition-opacity",
+                              message.role === "user" ? "right-0" : "left-0",
+                              "flex items-center gap-1 bg-white dark:bg-neutral-900 border dark:border-neutral-700 rounded-full py-1 px-1.5 shadow-sm"
+                            )}>
+                              {message.role !== "user" && (
+                                <>
+                                  <TooltipProvider>
+                                    <Tooltip delayDuration={0}>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          className="h-6 w-6 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800"
+                                          onClick={() => navigator.clipboard.writeText(message.content)}
+                                        >
+                                          <Copy className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="bottom" className="dark:bg-neutral-800 dark:text-white">
+                                        Copy message
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                  
+                                  <TooltipProvider>
+                                    <Tooltip delayDuration={0}>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          className="h-6 w-6 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800"
+                                        >
+                                          <ThumbsUp className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="bottom" className="dark:bg-neutral-800 dark:text-white">
+                                        Helpful
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                  
+                                  <TooltipProvider>
+                                    <Tooltip delayDuration={0}>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          className="h-6 w-6 rounded-full hover:bg-gray-100 dark:hover:bg-neutral-800"
+                                        >
+                                          <ThumbsDown className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="bottom" className="dark:bg-neutral-800 dark:text-white">
+                                        Not helpful
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {message.role === "user" && (
+                          <Avatar className="h-8 w-8 shrink-0">
+                            {user?.imageUrl ? (
+                              <AvatarImage 
+                                src={user.imageUrl} 
+                                alt={user.fullName || "User"}
+                                onError={(e) => {
+                                  e.target.style.display = 'none';
+                                  e.target.parentElement.querySelector('[data-fallback]').style.display = 'flex';
+                                }}
+                              />
+                            ) : (
+                              <AvatarFallback data-fallback className="bg-gray-400 dark:bg-gray-600">
+                                {user ? (user.fullName?.charAt(0) || user.username?.charAt(0) || "U") : "U"}
+                              </AvatarFallback>
+                            )}
+                          </Avatar>
+                        )}
+                      </div>
                     </div>
                   </div>
-                  
-                  {message.role === "user" && (
-                    <Avatar className="h-8 w-8 shrink-0">
-                      <AvatarFallback className="bg-gray-400 dark:bg-gray-600">U</AvatarFallback>
-                    </Avatar>
-                  )}
+                );
+              })}
+            </>
+          )}
+          
+          {/* Loading/typing indicator */}
+          {(isLoading || isTyping) && (
+            <div className="mb-4 flex w-full justify-start">
+              <div className="flex items-end gap-2 max-w-[85%]">
+                <Avatar className="h-8 w-8 shrink-0">
+                  <AvatarImage 
+                    src="/bot-avatar.png" 
+                    alt="AI"
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      e.target.parentElement.querySelector('[data-fallback]').style.display = 'flex';
+                    }}
+                  />
+                  <AvatarFallback data-fallback className="bg-blue-600 text-white">AI</AvatarFallback>
+                </Avatar>
+                
+                <div className="flex-1 min-w-0 overflow-hidden">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-sm font-medium dark:text-gray-300">
+                      MedAssist AI
+                    </span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      {formatMessageTime(new Date().toISOString())}
+                    </span>
+                  </div>
+                  <div className="rounded-lg p-3 bg-gray-100 dark:bg-neutral-800 dark:text-gray-100 inline-flex items-center prose prose-sm dark:prose-invert rounded-tl-none">
+                    <div className="typing-indicator flex space-x-1 items-center">
+                      <div className="w-2 h-2 rounded-full bg-blue-600 dark:bg-blue-500 animate-pulse"></div>
+                      <div className="w-2 h-2 rounded-full bg-blue-600 dark:bg-blue-500 animate-pulse delay-150"></div>
+                      <div className="w-2 h-2 rounded-full bg-blue-600 dark:bg-blue-500 animate-pulse delay-300"></div>
+                    </div>
+                  </div>
                 </div>
               </div>
-            ))
+            </div>
           )}
+          
           {error && (
-            <div className="flex justify-center">
+            <div className="flex justify-center mb-4">
               <div className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-4 py-2 rounded-lg text-sm">
                 {error}
               </div>

@@ -11,7 +11,7 @@ export class ApiClient {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('api_key')}`
+          'X-API-Key': 'test-user-key'
         },
         body: JSON.stringify({ message })
       });
@@ -33,9 +33,9 @@ export class ApiClient {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('api_key')}`
+          'X-API-Key': 'test-user-key'
         },
-        body: JSON.stringify({ message, sources })
+        body: JSON.stringify({ message })  // Remove sources from request body
       });
 
       if (!response.ok) {
@@ -53,7 +53,7 @@ export class ApiClient {
     try {
       const response = await fetch(`${this.baseUrl}/chat/${sessionId}`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('api_key')}`
+          'X-API-Key': 'test-user-key'
         }
       });
 
@@ -72,7 +72,7 @@ export class ApiClient {
     try {
       const response = await fetch(`${this.baseUrl}/chat`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('api_key')}`
+          'X-API-Key': 'test-user-key'
         }
       });
 
@@ -92,7 +92,7 @@ export class ApiClient {
       const response = await fetch(`${this.baseUrl}/chat/${sessionId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('api_key')}`
+          'X-API-Key': 'test-user-key'
         }
       });
 
@@ -115,7 +115,7 @@ export class ApiClient {
       const response = await fetch(`${this.baseUrl}/chat/upload`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('api_key')}`
+          'X-API-Key': 'test-user-key'
         },
         body: formData
       });
@@ -131,15 +131,15 @@ export class ApiClient {
     }
   }
 
-  async processFile(file) {
+  async processFile(file, sessionId) {
     try {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch(`${this.baseUrl}/chat/process-file`, {
+      const response = await fetch(`${this.baseUrl}/chat/process-file/${sessionId}`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('api_key')}`
+          'X-API-Key': 'test-user-key'
         },
         body: formData
       });
@@ -156,4 +156,4 @@ export class ApiClient {
   }
 }
 
-export const apiClient = new ApiClient(); 
+export const apiClient = new ApiClient();

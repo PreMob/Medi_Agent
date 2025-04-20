@@ -25,7 +25,9 @@ export default function RootLayout({ children }) {
    <ClerkProvider
       appearance={{
          signIn: { baseTheme: neobrutalism },
-      }}>
+      }}
+      jwtTimeSkewTolerance={60}
+    >
     <html lang="en" suppressHydrationWarning className="h-full">
       <body suppressHydrationWarning
         className={`${geistSans.variable} ${geistMono.variable} antialiased h-full`}

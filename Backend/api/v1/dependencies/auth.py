@@ -19,12 +19,14 @@ def mock_decode_api_key(api_key: str) -> UserInfo:
             user_id="admin123",
             role="admin",
             name="Admin User",
+            organization="medi-agent"
         )
     elif api_key == "test-user-key":
         return UserInfo(
             user_id="user123",
             role="user",
             name="Regular User",
+            organization="medi-agent"
         )
     else:
         # TODO: Implement actual API key validation
@@ -32,6 +34,7 @@ def mock_decode_api_key(api_key: str) -> UserInfo:
             user_id=api_key,
             role="user",
             name="Regular User",
+            organization="medi-agent"
         )
     # raise HTTPException(status_code=401, detail="Invalid API key")
 
