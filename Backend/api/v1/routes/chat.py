@@ -111,27 +111,64 @@ async def process_file(
     file: UploadFile = File(...),
     user_info: UserInfo = Depends(verify_api_key)
 ):
+    import tempfile
+    import shutil
+    
     # Validate file type
-    if file.content_type not in ["application/pdf", "image/jpeg", "image/png"]:
-        raise HTTPException(status_code=400, detail="Invalid file type")
-    
-    # Save file temporarily
-    file_location = f"/tmp/{file.filename}"
-    with open(file_location, "wb") as f:
-        f.write(file.file.read())
-    
-    # Extract text and generate summary
-    result = process_document(file_location)
-    os.remove(file_location)
-    
-    # Inject prescription data into chat session
-    chat_service = ChatService()
-    try:
-        await chat_service.handle_message(
-            user_info.user_id, 
-            session_id, 
-            f"PRESCRIPTION_DATA: {result}"
+    allowed_types = ["application/pdf", "image/jpeg", "image/png", "image/jpg"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid file type. Supported types: {', '.join(allowed_types)}"
         )
-        return JSONResponse(content={"status": "Prescription processed successfully"})
-    except NotFoundOrAccessException as e:
-        raise HTTPException(status_code=403, detail=str(e))
+    
+    # Create temporary file with proper extension
+    file_extension = ""
+    if file.content_type == "application/pdf":
+        file_extension = ".pdf"
+    elif file.content_type in ["image/jpeg", "image/jpg"]:
+        file_extension = ".jpg"
+    elif file.content_type == "image/png":
+        file_extension = ".png"
+    
+    try:
+        # Use tempfile for cross-platform compatibility
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as tmp_file:
+            # Read file content
+            content = await file.read()
+            tmp_file.write(content)
+            file_location = tmp_file.name
+        
+        # Extract text and generate summary
+        result = process_document(file_location)
+        
+        # Clean up temporary file
+        os.remove(file_location)
+          # Check if processing was successful
+        if result.startswith("Error") or result.startswith("File not found") or result.startswith("No text"):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "error",
+                    "message": result,
+                    "filename": file.filename
+                }
+            )
+        
+        # Return processed data without injecting into chat session
+        # The frontend will handle adding this to the conversation
+        return JSONResponse(content={
+            "status": "success",
+            "message": "Document processed successfully",
+            "filename": file.filename,
+            "extracted_data": result
+        })
+            
+    except Exception as e:
+        # Clean up temporary file if it exists
+        if 'file_location' in locals() and os.path.exists(file_location):
+            os.remove(file_location)
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error processing file: {str(e)}"
+        )

@@ -229,11 +229,11 @@ export function useCustomChat({ initialMessages = [], onFinish, sessionId } = {}
       }
     }
   }, [messages, handleSubmit]);
-
   return {
     messages,
     groupedMessages,
     input,
+    setInput,
     handleInputChange,
     handleSubmit,
     isLoading,

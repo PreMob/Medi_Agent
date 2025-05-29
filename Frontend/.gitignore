@@ -30,6 +30,12 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# log files
+*.log
+logs/
+*.log.*
+log/
+
 # env files (can opt-in for committing if needed)
 .env*
 
@@ -42,3 +48,8 @@ next-env.d.ts
 
 # clerk configuration (can include secrets)
 /.clerk/
+
+# Python (if any Python scripts in frontend)
+__pycache__/
+*.py[cod]
+*$py.class

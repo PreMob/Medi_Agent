@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react"
 import { useUser } from "@clerk/nextjs" 
 import { useCustomChat } from "@/lib/use-custom-chat"
+import { apiClient } from "@/lib/api-client"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { PatientSidebar } from "@/components/chat-ui/patient-sidebar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -26,8 +27,7 @@ export default function Page({ params }) {
   return <MedicalChat slug={slug} />;
 }
 
-function MedicalChat({ slug }) {
-  const { messages, groupedMessages, input, handleInputChange, handleSubmit, isLoading, isTyping, stop, reload, setMessages, error } = useCustomChat({
+function MedicalChat({ slug }) {  const { messages, groupedMessages, input, handleInputChange, handleSubmit, isLoading, isTyping, stop, reload, setMessages, setInput, error } = useCustomChat({
     onFinish: () => {
       setMessages(currentMessages => {
         saveChat(currentMessages);
@@ -43,9 +43,9 @@ function MedicalChat({ slug }) {
   const [selectedTag, setSelectedTag] = useState("");
   const [newTag, setNewTag] = useState("");
   const [tags, setTags] = useState(["Medication", "Symptoms", "Diagnosis", "Follow-up", "General"]);
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
-  const [attachments, setAttachments] = useState([]);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);  const [attachments, setAttachments] = useState([]);
   const [pinnedFiles, setPinnedFiles] = useState([]);
+  const [isProcessingFiles, setIsProcessingFiles] = useState(false);
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -70,13 +70,107 @@ function MedicalChat({ slug }) {
       textareaRef.current.style.height = "auto";
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`;
     }
-  }, [input]);
-  
-  // Handler functions
-  const handleFormSubmit = (e) => {
+  }, [input]);  // Handler functions
+  const handleFormSubmit = async (e) => {
     e.preventDefault();
-    if (input.trim()) {
-      handleSubmit();
+    
+    if (!input.trim() && attachments.length === 0) return;
+    
+    try {
+      let messageToSend = input.trim();
+      let currentSessionId = slug;
+      
+      // Process files first if any are attached
+      if (attachments.length > 0) {
+        const processedFiles = await processAttachedFiles();
+        
+        // Create a summary message about processed files
+        const filesSummary = processedFiles.map(file => 
+          `📄 ${file.filename}: ${file.status === 'success' || file.status === 'processed' ? 'Processed successfully' : file.data}`
+        ).join('\n');
+        
+        // Add the files summary to the message
+        messageToSend = messageToSend 
+          ? `${messageToSend}\n\n📋 Processed Documents:\n${filesSummary}`
+          : `📋 Processed Documents:\n${filesSummary}`;
+        
+        // Clear attachments after processing
+        setAttachments([]);
+        
+        // Check if URL was updated during file processing (session was created)
+        if (!currentSessionId && typeof window !== 'undefined') {
+          const pathParts = window.location.pathname.split('/');
+          if (pathParts.length >= 3 && pathParts[1] === 'Chats') {
+            currentSessionId = pathParts[2];
+          }
+        }
+      }
+      
+      // If we have a message to send
+      if (messageToSend) {
+        // Create user message manually
+        const userMessage = { 
+          id: Date.now(), 
+          role: 'user', 
+          content: messageToSend,
+          timestamp: new Date().toISOString(),
+          status: 'sent'
+        };
+        
+        // Add to messages
+        const newMessages = [...messages, userMessage];
+        setMessages(newMessages);
+        setInput('');
+        
+        // Save to localStorage
+        localStorage.setItem('medical-chat', JSON.stringify(newMessages));
+        
+        // Send to backend (if using backend)
+        try {
+          let response;
+          if (currentSessionId) {
+            response = await apiClient.sendMessage(currentSessionId, messageToSend);
+          } else {
+            response = await apiClient.createNewChat(messageToSend);
+            // Update URL with new session ID
+            if (response.session_id && typeof window !== 'undefined') {
+              window.history.replaceState({}, '', `/Chats/${response.session_id}`);
+            }
+          }
+          
+          // Handle AI response
+          let responseContent = '';
+          if (response.response && response.response.content) {
+            responseContent = response.response.content;
+          } else if (response.message) {
+            responseContent = response.message;
+          } else if (response.content) {
+            responseContent = response.content;
+          } else {
+            responseContent = 'Unable to display response. Please try again.';
+          }
+          
+          // Add AI response
+          const aiMessage = {
+            id: Date.now() + 1,
+            role: 'assistant',
+            content: responseContent,
+            timestamp: new Date().toISOString(),
+            status: 'received'
+          };
+          
+          const finalMessages = [...newMessages, aiMessage];
+          setMessages(finalMessages);
+          localStorage.setItem('medical-chat', JSON.stringify(finalMessages));
+          
+        } catch (error) {
+          console.error('Error sending message to backend:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Error processing form:', error);
+      // Fall back to regular submission
+      handleSubmit(e);
     }
   };
   
@@ -90,11 +184,66 @@ function MedicalChat({ slug }) {
   const handleFileButtonClick = () => {
     fileInputRef.current?.click();
   };
-  
-  const handleFileChange = (e) => {
+    const handleFileChange = (e) => {
     if (e.target.files) {
-      setAttachments(prev => [...prev, ...Array.from(e.target.files)]);
+      const validFiles = Array.from(e.target.files).filter(file => {
+        const validTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+        return validTypes.includes(file.type);
+      });
+      
+      if (validFiles.length !== e.target.files.length) {
+        alert('Some files were skipped. Only PDF, JPEG, and PNG files are supported.');
+      }
+      
+      setAttachments(prev => [...prev, ...validFiles]);
     }
+  };  const processAttachedFiles = async () => {
+    if (attachments.length === 0) return [];
+    
+    setIsProcessingFiles(true);
+    const processedFiles = [];
+    
+    // Determine session ID once for all files
+    let sessionIdToUse = slug;
+    
+    // If no session exists, create one before processing any files
+    if (!sessionIdToUse) {
+      try {
+        const newChatResponse = await apiClient.createNewChat("Processing uploaded files...");
+        sessionIdToUse = newChatResponse.session_id;
+        
+        // Update the URL to include the new session ID
+        if (typeof window !== 'undefined') {
+          window.history.replaceState({}, '', `/Chats/${sessionIdToUse}`);
+        }
+      } catch (error) {
+        console.error('Error creating session for file processing:', error);
+        setIsProcessingFiles(false);
+        return [];
+      }
+    }
+    
+    // Process all files with the same session ID
+    for (const file of attachments) {
+      try {
+        const result = await apiClient.processFile(file, sessionIdToUse);
+        processedFiles.push({
+          filename: file.name,
+          status: result.status === 'success' ? 'success' : 'processed',
+          data: result.extracted_data || result.message || 'File processed successfully'
+        });
+      } catch (error) {
+        console.error(`Error processing file ${file.name}:`, error);
+        processedFiles.push({
+          filename: file.name,
+          status: 'error',
+          data: `Failed to process: ${error.message}`
+        });
+      }
+    }
+    
+    setIsProcessingFiles(false);
+    return processedFiles;
   };
   
   const addTag = () => {
@@ -300,10 +449,12 @@ function MedicalChat({ slug }) {
                         value={newTag}
                         onChange={(e) => setNewTag(e.target.value)}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            addTag();
-                          }
+                          e.preventDefault();
+                          addTag();
+                          // if (e.key === "Enter") {
+                          //   e.preventDefault();
+                          //   addTag();
+                          // }
                         }}
                         className="dark:bg-neutral-800 dark:text-white dark:border-neutral-700 h-9"
                       />
@@ -385,11 +536,10 @@ function MedicalChat({ slug }) {
                   <X className="h-3.5 w-3.5" />
                 </Button>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {pinnedFiles.map((file, index) => (
+              <div className="flex flex-wrap gap-2">                {pinnedFiles.map((file, index) => (
                   <TooltipProvider key={index}>
                     <Tooltip delayDuration={0}>
-                      <TooltipTrigger asChild>
+                      <TooltipTrigger>
                         <div className="flex items-center gap-1.5 bg-white dark:bg-neutral-800 border border-blue-200 dark:border-blue-900/30 rounded-md py-1 px-2 text-xs text-blue-700 dark:text-blue-400">
                           {file.type === 'PDF' && <FileText className="h-3.5 w-3.5" />}
                           {file.type === 'IMAGE' && <ImageIcon className="h-3.5 w-3.5" />}
@@ -536,8 +686,7 @@ function MedicalChat({ slug }) {
                               "flex items-center gap-1 bg-white dark:bg-neutral-900 border dark:border-neutral-700 rounded-full py-1 px-1.5 shadow-sm"
                             )}>
                               {message.role !== "user" && (
-                                <>
-                                  <TooltipProvider>
+                                <>                                  <TooltipProvider>
                                     <Tooltip delayDuration={0}>
                                       <TooltipTrigger asChild>
                                         <Button
@@ -554,8 +703,7 @@ function MedicalChat({ slug }) {
                                       </TooltipContent>
                                     </Tooltip>
                                   </TooltipProvider>
-                                  
-                                  <TooltipProvider>
+                                    <TooltipProvider>
                                     <Tooltip delayDuration={0}>
                                       <TooltipTrigger asChild>
                                         <Button
@@ -571,8 +719,7 @@ function MedicalChat({ slug }) {
                                       </TooltipContent>
                                     </Tooltip>
                                   </TooltipProvider>
-                                  
-                                  <TooltipProvider>
+                                    <TooltipProvider>
                                     <Tooltip delayDuration={0}>
                                       <TooltipTrigger asChild>
                                         <Button
@@ -669,22 +816,29 @@ function MedicalChat({ slug }) {
         
         {/* Input area with dark mode */}
         <div className="p-3 border-t bg-white dark:bg-neutral-900 dark:border-neutral-800 w-full">
-          <form onSubmit={handleFormSubmit} className="flex flex-col gap-2 mx-auto w-full max-w-3xl">
-            {/* File attachments preview with dark mode */}
+          <form onSubmit={handleFormSubmit} className="flex flex-col gap-2 mx-auto w-full max-w-3xl">            {/* File attachments preview with dark mode */}
             {attachments.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-2">
+                {isProcessingFiles && (
+                  <div className="w-full text-center text-sm text-blue-600 dark:text-blue-400 py-2">
+                    <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
+                    Processing {attachments.length} file{attachments.length > 1 ? 's' : ''}...
+                  </div>
+                )}
                 {attachments.map((file, index) => (
-                  <div key={index} className="flex items-center gap-2 bg-gray-100 dark:bg-neutral-800 rounded-lg py-1 px-2">
+                  <div key={index} className={cn(
+                    "flex items-center gap-2 bg-gray-100 dark:bg-neutral-800 rounded-lg py-1 px-2",
+                    isProcessingFiles && "opacity-50"
+                  )}>
                     {file.type.includes("image") ? (
                       <ImageIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                     ) : (
                       <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                     )}
                     <span className="text-sm truncate max-w-[120px] dark:text-gray-200">{file.name}</span>
-                    <div className="flex gap-1">
-                      <TooltipProvider>
+                    <div className="flex gap-1">                      <TooltipProvider>
                         <Tooltip delayDuration={0}>
-                          <TooltipTrigger asChild>
+                          <TooltipTrigger>
                             <Button 
                               type="button" 
                               variant="ghost" 
@@ -723,22 +877,20 @@ function MedicalChat({ slug }) {
                 ref={textareaRef}
                 value={input}
                 onChange={handleInputChange}
-                onKeyDown={handleKeyDown}
-                placeholder="Type your medical question here..."
+                onKeyDown={handleKeyDown}                placeholder="Type your medical question here..."
                 className="min-h-11 pr-20 resize-none dark:bg-neutral-800 dark:text-white dark:border-neutral-700 dark:placeholder-gray-400 w-full rounded-2xl"
                 rows={1}
-                disabled={isLoading}
+                disabled={isLoading || isProcessingFiles}
               />
               
-              <div className="absolute right-1.5 bottom-1.5 flex gap-1.5">
-                <TooltipProvider>
+              <div className="absolute right-1.5 bottom-1.5 flex gap-1.5">                <TooltipProvider>
                   <Tooltip delayDuration={0}>
-                    <TooltipTrigger asChild>
+                    <TooltipTrigger>
                       <Button 
                         type="button" 
                         variant="ghost" 
                         size="icon"
-                        disabled={isLoading}
+                        disabled={isLoading || isProcessingFiles}
                         onClick={handleFileButtonClick}
                         className="dark:text-gray-400 dark:hover:text-white dark:hover:bg-neutral-700 h-8 w-8"
                       >
@@ -759,15 +911,14 @@ function MedicalChat({ slug }) {
                   className="hidden"
                   multiple
                 />
-                
-                <Button 
+                  <Button 
                   type="submit" 
                   size="icon"
-                  disabled={isLoading || !input.trim()}
+                  disabled={isLoading || isProcessingFiles}
                   className="rounded-full dark:bg-blue-700 dark:hover:bg-blue-600 h-8 w-8"
                 >
-                  {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-                  <span className="sr-only">Send message</span>
+                  {(isLoading || isProcessingFiles) ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+                  <span className="sr-only">{isProcessingFiles ? 'Processing files...' : 'Send message'}</span>
                 </Button>
               </div>
             </div>
